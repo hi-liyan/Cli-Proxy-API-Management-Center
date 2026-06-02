@@ -1,0 +1,107 @@
+name: Manual Build and Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing git tag to release, for example v1.14.2'
+        required: true
+        type: string
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Validate tag input
+        run: |
+          set -euo pipefail
+          tag="${{ inputs.tag }}"
+          if [[ -z "${tag}" ]]; then
+            echo "Tag input is required."
+            exit 1
+          fi
+          if [[ ! "${tag}" =~ ^v ]]; then
+            echo "Tag must start with 'v'. Got: ${tag}"
+            exit 1
+          fi
+
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Verify tag exists
+        run: |
+          set -euo pipefail
+          git rev-parse "refs/tags/${{ inputs.tag }}"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.14'
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build all-in-one HTML
+        run: bun run build
+        env:
+          VERSION: ${{ inputs.tag }}
+
+      - name: Prepare release assets
+        run: |
+          set -euo pipefail
+          cd dist
+          mv index.html management.html
+          ls -lh management.html
+
+      - name: Generate release notes
+        run: |
+          set -euo pipefail
+          current_tag="${{ inputs.tag }}"
+          previous_tag="$(git tag --list 'v*' --sort=-v:refname | grep -v "^${current_tag}$" | head -n 1 || true)"
+          if [ -n "${previous_tag}" ]; then
+            range="${previous_tag}..${current_tag}"
+          else
+            range="${current_tag}"
+          fi
+
+          : > release-notes.md
+          git log --pretty=format:"- %h %s" "${range}" >> release-notes.md
+
+      - name: Fail if release already exists
+        run: |
+          set -euo pipefail
+          if gh release view "${{ inputs.tag }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release already exists for tag ${{ inputs.tag }}"
+            exit 1
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create release
+        run: |
+          set -euo pipefail
+          gh release create "${{ inputs.tag }}" \
+            dist/management.html \
+            --repo "${{ github.repository }}" \
+            --title "${{ inputs.tag }}" \
+            --notes-file release-notes.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify release exists
+        run: gh release view "${{ inputs.tag }}" --repo "${{ github.repository }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
