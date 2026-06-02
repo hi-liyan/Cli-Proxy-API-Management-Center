@@ -29,17 +29,23 @@ jobs:
             exit 1
           fi
 
-      - name: Checkout tag
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: refs/tags/${{ inputs.tag }}
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Verify tag exists
+      - name: Fetch and verify tag
         run: |
           set -euo pipefail
+          git fetch --force --tags origin
           git rev-parse "refs/tags/${{ inputs.tag }}"
+
+      - name: Checkout target tag
+        run: |
+          set -euo pipefail
+          git checkout --detach "refs/tags/${{ inputs.tag }}"
+          git show --stat --oneline --no-patch HEAD
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
