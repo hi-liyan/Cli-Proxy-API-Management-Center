@@ -775,11 +775,22 @@ const renderCodexItems = (
   };
 
   const planLabel = getPlanLabel(planType);
-  const isPremiumPlan = PREMIUM_CODEX_PLAN_TYPES.has(normalizePlanType(planType) ?? '');
+  const normalizedPlanType = normalizePlanType(planType);
+  const isPremiumPlan = PREMIUM_CODEX_PLAN_TYPES.has(normalizedPlanType ?? '');
   const nodes: ReactNode[] = [];
 
   if (planLabel) {
-    const valueClass = isPremiumPlan ? styleMap.premiumPlanValue : styleMap.codexPlanValue;
+    let valueClass = styleMap.codexPlanValue;
+    if (normalizedPlanType === 'plus') {
+      valueClass = `${styleMap.premiumPlanValue} ${styleMap.codexPlanValuePlus}`;
+    } else if (normalizedPlanType === 'pro') {
+      valueClass = `${styleMap.premiumPlanValue} ${styleMap.codexPlanValuePro}`;
+    } else if (isPremiumPlan) {
+      valueClass = styleMap.premiumPlanValue;
+    } else if (normalizedPlanType === 'team') {
+      valueClass = `${styleMap.codexPlanValue} ${styleMap.codexPlanValueTeam}`;
+    }
+
     nodes.push(
       h(
         'div',
